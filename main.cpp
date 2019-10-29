@@ -5,9 +5,8 @@ int main(int argc, const char *argv[]) {
     if (argc < 4) {
         auto *graph = new Graph("10/washington-50-10-3.txt",
                                 "10/param-washington-50-10-3.txt");
-
+        graph->showGraph();
         auto *model = new Model(graph);
-//        getchar();
         model->initModel();
         model->solve();
         model->showSolution();

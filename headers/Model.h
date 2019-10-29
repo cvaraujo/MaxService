@@ -11,7 +11,7 @@
 class Model {
 //    typedef IloArray<IloNumVarArray> NumVarMatrix;
     Graph *graph;
-    GRBEnv env = GRBEnv(true);
+    GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
     vector<vector<vector<GRBVar>>> f;
     vector<vector<GRBVar>> y;

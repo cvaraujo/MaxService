@@ -21,10 +21,13 @@ class Graph {
     vector<int> distance;
 
 public:
-    vector<Arc *> arcs, nonDirectedArcs;
+    vector<vector<Arc *>> arcs;
     vector<int> terminals, nonTerminals, DuS, delayVector, jitterVector;
+    vector<bool> removed;
 
     Graph(string instance, string param);
+
+    void showGraph();
 
     int getN() const;
 
