@@ -2,19 +2,21 @@
 // Created by carlos on 05/03/19.
 //
 
-#ifndef MRP_INCLUDE_H
-#define MRP_INCLUDE_H
+#ifndef MS_INCLUDE_H
+#define MS_INCLUDE_H
 
 #include <iostream>
 #include <vector>
-#include <ilcplex/ilocplex.h>
 #include "string"
+#include <iomanip>
+#include <bits/ios_base.h>
+#include <algorithm>
+#include <fstream>
+#include <gurobi_c++.h>
 #include "boost/graph/adjacency_list.hpp"
 #include "boost/graph/dijkstra_shortest_paths.hpp"
 #include "boost/graph/adjacency_list.hpp"
 
-
-ILOSTLBEGIN
 using namespace std;
 using namespace boost;
 

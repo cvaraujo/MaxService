@@ -1,144 +1,169 @@
 //
-// Created by carlos on 05/03/19.
+// Created by carlos on 27/05/19.
 //
 
-#include "../headers/Data.h"
+#include "../headers/Graph.h"
+#include "../headers/Include.h"
 
-Data::Data(const char *instance, const char *param) {
-    FILE *archiveInstance, *archiveParam;
-    char *line = nullptr;
-    size_t length = 0;
-    char e;
-    int v1, v2, vTerminal;
-    double delay, jitter, bandwidth, estimateLinkDuration;
+Graph::Graph(string instance, string param) {
+    int u, v;
+    double delay, jitter, bandwidth, ldp, paramDelayToken, paramJitterToken, paramVariationToken, paramBandwidthToken;
+    int delayInt, jitterInt;
+    string token;
+    ifstream fileGraph, fileParam;
 
-    archiveInstance = fopen(instance, "r");
-    archiveParam = fopen(param, "r");
+    fileParam.open(param, fstream::in);
 
-    cout << "Loading Archives" << endl;
-    if (archiveInstance == nullptr || archiveParam == nullptr) {
-        cout << "Error, Cannot open the file!" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    getline(&line, &length, archiveParam);
-    this->paramDelay = int(1e5 * atof(strtok(line, "Delay limit: ")));
-
-    getline(&line, &length, archiveParam);
-    this->paramJitter = int(1e6 * atof(strtok(line, "Jitter limit: ")));
-
-    getline(&line, &length, archiveParam);
-    this->paramDelayVariation = int(1e5 * atof(strtok(line, "Delay variation limit:  ")));
-
-    getline(&line, &length, archiveParam);
-    this->paramBandwidth = atoi(strtok(line, "Bandwidth limit: "));
-
-    while ((getline(&line, &length, archiveInstance)) != -1) {
-        if (strcasecmp("SECTION Graph\n", line) == 0) {
-            getline(&line, &length, archiveInstance);
-            this->cntNodes = atoi(strtok(line, "Nodes ")) + 1;
-            getline(&line, &length, archiveInstance);
-            this->cntEdges = atoi(strtok(line, "Edges "));
-            getline(&line, &length, archiveInstance);
-
-            this->arcs = vector<Arc *>();
-            this->nonDirectedArcs = vector<Arc *>();
-            this->graphDelay = BoostGraph(cntNodes);
-            this->graphJitter = BoostGraph(cntNodes);
-            for (int i = 0; i < this->cntEdges; i++) {
-                fscanf(archiveInstance, "%c %d %d %lf %lf %lf %lf\n", &e, &v1, &v2, &delay, &jitter, &bandwidth,
-                       &estimateLinkDuration);
-                if (bandwidth >= this->paramBandwidth) {
-                    Arc *arc = new Arc(v1, v2, int(1e5 * delay), int(1e6 * jitter), int(bandwidth),
-                                       int(10 * estimateLinkDuration));
-                    Arc *arcRev = new Arc(v2, v1, int(1e5 * delay), int(1e6 * jitter), int(bandwidth),
-                                          int(10 * estimateLinkDuration));
-                    arcs.push_back(arc), arcs.push_back(arcRev), nonDirectedArcs.push_back(arc);
-
-                    //insertEdge(v1, v2, int(1e6 * delay), true);
-                    //insertEdge(v1, v2, int(1e7 * jitter), false);
-                }
+    while (!fileParam.eof()) {
+        fileParam >> token;
+        if (token == "Delay") {
+            fileParam >> token;
+            if (token == "variation") {
+                fileParam >> token >> paramVariationToken;
+                Graph::paramVariation = int(1e5 * paramVariationToken);
+            } else {
+                fileParam >> paramDelayToken;
+                Graph::paramDelay = int(1e5 * paramDelayToken);
             }
-
-        } else if ((strcasecmp("SECTION Terminals\n", line) == 0)) {
-            getline(&line, &length, archiveInstance);
-            this->root = atoi(strtok(line, "Root "));
-            getline(&line, &length, archiveInstance);
-            this->cntTerminals = atoi(strtok(line, "Terminals "));
-
-
-            this->terminals = vector<int>(this->cntTerminals);
-
-            for (int i = 0; i < this->cntTerminals; ++i) {
-                fscanf(archiveInstance, "%c %d\n", &e, &vTerminal);
-                this->terminals[i] = vTerminal;
-            }
+        }
+        if (token == "Jitter") {
+            fileParam >> token >> paramJitterToken;
+            Graph::paramJitter = int(1e6 * paramJitterToken);
+        }
+        if (token == "Bandwidth") {
+            fileParam >> token >> paramBandwidthToken;
+            Graph::paramBandwidth = int(paramBandwidthToken);
         }
     }
 
-    graphAdapt();
-    cout << "All done!" << endl;
-    fclose(archiveParam);
-    fclose(archiveInstance);
-}
+    fileGraph.open(instance, fstream::in);
 
-void Data::insertEdge(int i, int j, int weight, bool isDelay) {
-    if (isDelay) add_edge(i, j, weight, graphDelay), add_edge(j, i, weight, graphDelay);
-    else add_edge(i, j, weight, graphJitter), add_edge(j, i, weight, graphJitter);
-}
+    while (!fileGraph.eof()) {
+        fileGraph >> token;
+        if (token == "Nodes") {
+            fileGraph >> n;
+            graphShp = BoostGraph(n);
+        }
 
-void Data::graphAdapt() {
-    Arc *arc = new Arc(this->root, 0, 0, 0, 0, 0);
-    this->nonDirectedArcs.push_back(arc);
-    this->arcs.push_back(arc);
-    DuS = vector<int>(terminals);
+        if (token == "Edges") fileGraph >> m;
+
+        if (token == "E") {
+            fileGraph >> u >> v >> delay >> jitter >> bandwidth >> ldp;
+            if (bandwidth >= paramBandwidth) {
+                delayInt = int(1e5 * delay), jitterInt = int(1e6 * jitter), --u, --v;
+                Arc *arc = new Arc(u, v, delayInt, jitterInt, int(bandwidth), int(10 * ldp));
+                Arc *arcRev = new Arc(v, u, delayInt, jitterInt, int(bandwidth), int(10 * ldp));
+                this->delayVector.push_back(delayInt), this->jitterVector.push_back(jitterInt);
+                arcs.push_back(arc), arcs.push_back(arcRev);
+                nonDirectedArcs.push_back(arc);
+                add_edge(u, v, delayInt, graphShp), add_edge(v, u, delayInt, graphShp);
+            }
+        }
+        if (token == "Root") fileGraph >> root;
+        if (token == "T") fileGraph >> u, terminals.push_back(u), DuS.push_back(u);
+    }
 
     bool isTerminal;
-    for (int i = 1; i < this->cntNodes; ++i) {
+    for (int i = 0; i < n; ++i) {
         isTerminal = false;
-        if (i == this->root) continue;
-        for (int t : this->terminals)
+        if (i == root) continue;
+        for (auto t : terminals) {
             if (i == t) {
                 isTerminal = true;
                 break;
             }
-        if (!isTerminal) this->nonTerminals.push_back(i);
+        }
+        if (!isTerminal) nonTerminals.push_back(i), DuS.push_back(i);
     }
 
-    DuS.insert(DuS.end(), nonTerminals.begin(), nonTerminals.end());
+    sort(delayVector.begin(), delayVector.end());
+    sort(jitterVector.begin(), jitterVector.end());
 
+    for (int i = 0; i < n - 1; i++)
+        bigMDelay += delayVector[i], bigMJitter += jitterVector[i];
 
-    for (int s : this->nonTerminals) {
-        arc = new Arc(0, s, 0, 0, 0, 0);
-        this->nonDirectedArcs.push_back(arc);
-        this->arcs.push_back(arc);//, this->arcs.push_back(arcRev);
-    }
+    cout << "BigM Delay = " << bigMDelay << endl;
+    cout << "BigM Jitter = " << bigMJitter << endl;
 
-    this->cntEdges = int(this->arcs.size());
+    property_map<BoostGraph, edge_weight_t>::type weightMap = get(edge_weight, graphShp);
+    predecessors = vector<vertex_descriptor>(n);
+    distance = vector<int>(n);
+
+    dijkstra_shortest_paths(graphShp, root, predecessor_map(
+            make_iterator_property_map(predecessors.begin(), get(vertex_index, graphShp))).distance_map(
+            make_iterator_property_map(distance.begin(), get(vertex_index, graphShp))));
+
+    cout << "Distance to terminals" << endl;
+    for (auto k : terminals) cout << "k: " << k << ", distance: " << distance[k] << endl;
+
+    cout << "Load graph successfully" << endl;
 }
 
-void Data::showData() {
-    cout << "Arcs" << endl;
-    for (auto *arc : arcs) {
-        cout << arc->getO() << " " << arc->getD() << ": " << arc->getDelay()
-             << " " << arc->getJitter() << " " << arc->getBandwidth() << " " <<
-             arc->getEstimateLinkDuration() << endl;
-    }
-
-    cout << "\n Param" << endl;
-    cout << "Nodes: " << cntNodes << " Edges: " << cntEdges <<
-         " CntTerminals: " << cntTerminals << " Root: " << root << endl;
-
-    cout << "Delay: " << paramDelay << " Jitter: " << paramJitter <<
-         " DelayVari.: " << paramDelayVariation << " Bandwidth: " << paramBandwidth << endl;
-
-    cout << "Terminals" << endl;
-    for (int i : terminals) {
-        cout << "T: " << i << " ";
-    }
-    cout << "\nNonTerminals" << endl;
-    for (int i : nonTerminals) {
-        cout << "NT: " << i << " ";
-    }
-
+int Graph::getBigMDelay() {
+    return bigMDelay;
 }
+
+int Graph::getBigMJitter() {
+    return bigMJitter;
+}
+
+int Graph::getShpTerminal(int k) {
+    return distance[k];
+}
+
+int Graph::getN() const {
+    return n;
+}
+
+void Graph::setN(int n) {
+    Graph::n = n;
+}
+
+int Graph::getM() const {
+    return m;
+}
+
+void Graph::setM(int m) {
+    Graph::m = m;
+}
+
+int Graph::getParamDelay() const {
+    return paramDelay;
+}
+
+void Graph::setParamDelay(int paramDelay) {
+    Graph::paramDelay = paramDelay;
+}
+
+int Graph::getParamJitter() const {
+    return paramJitter;
+}
+
+void Graph::setParamJitter(int paramJitter) {
+    Graph::paramJitter = paramJitter;
+}
+
+int Graph::getParamVariation() const {
+    return paramVariation;
+}
+
+void Graph::setParamVariation(int paramVariation) {
+    Graph::paramVariation = paramVariation;
+}
+
+int Graph::getParamBandwidth() const {
+    return paramBandwidth;
+}
+
+void Graph::setParamBandwidth(int paramBandwidth) {
+    Graph::paramBandwidth = paramBandwidth;
+}
+
+int Graph::getRoot() const {
+    return root;
+}
+
+void Graph::setRoot(int root) {
+    Graph::root = root;
+}
+

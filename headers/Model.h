@@ -6,50 +6,42 @@
 #define MRP_MODEL_H
 
 #include "Include.h"
-#include "Data.h"
+#include "Graph.h"
 
 class Model {
-    typedef IloArray<IloNumVarArray> NumVarMatrix;
-    Data *data;
-    IloEnv env;
-    IloModel model;
-    IloCplex cplex;
-    IloArray<NumVarMatrix> f;
-    IloArray<IloNumVarArray> x;
-    IloArray<IloNumVarArray> y;
+//    typedef IloArray<IloNumVarArray> NumVarMatrix;
+    Graph *graph;
+    GRBEnv env = GRBEnv(true);
+    GRBModel model = GRBModel(env);
+    vector<vector<vector<GRBVar>>> f;
+    vector<vector<GRBVar>> y;
+    vector<GRBVar> z;
 
-    void objectiveFunction(double thetaC, double thetaP, double thetaD);
+    void objectiveFunction();
 
-    void c2();
+    void rootFlow();
 
-    void c3();
+    void flowConservation();
 
-    void c4();
+    void terminalsFlow();
 
-    void c5();
+    void relXandY();
 
-    void c6();
+    void maxArcs();
 
-    void c7();
+    void limDelayAndJitter();
 
-    void c8c9();
-
-    void c10();
-
-    void c11();
-
-    void c12();
-
+    void limVariation();
 public:
-    Model(Data *data);
+    Model(Graph *graph);
 
     void initialize();
 
-    void initModel(double thetaC, double thetaP, double thetaD);
+    void initModel();
 
     void solve();
 
-    void showSolution(const char *input, const char *outputFile, double thetaC, double thetaP, double thetaD);
+    void showSolution();
 
 };
 

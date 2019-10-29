@@ -1,0 +1,3 @@
+/home/carlos/CLionProjects/MaxService/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/carlos/CLionProjects/MaxService/cmake-build-debug/CMakeFiles/MaxService.dir
+/home/carlos/CLionProjects/MaxService/cmake-build-debug/CMakeFiles/edit_cache.dir

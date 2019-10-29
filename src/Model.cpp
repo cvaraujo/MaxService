@@ -4,290 +4,184 @@
 
 #include "../headers/Model.h"
 
-Model::Model(Data *data) {
-    if (data != nullptr) {
-        this->data = data;
-
+Model::Model(Graph *graph) {
+    if (graph != nullptr) {
+        this->graph = graph;
         initialize();
-    }
+    } else exit(EXIT_FAILURE);
+
 }
 
 void Model::initialize() {
+    int o, d, n = graph->getN(), m = graph->getM();
     try {
-        char name[12];
-        this->model = IloModel(env);
-        this->cplex = IloCplex(model);
+        env.set("LogFile", "MS_mip.log");
+        env.start();
 
-        this->f = IloArray<NumVarMatrix>(env, data->cntNodes);
-        this->x = IloArray<IloNumVarArray>(env, data->cntNodes);
-        this->y = IloArray<IloNumVarArray>(env, data->cntNodes);
+        f = vector<vector<vector<GRBVar>>>(n, vector<vector<GRBVar>>(n, vector<GRBVar>(n)));
+        y = vector<vector<GRBVar>>(n, vector<GRBVar>(n));
+        z = vector<GRBVar>(n);
 
-        for (int i = 0; i < data->cntNodes; i++) {
-            this->x[i] = IloNumVarArray(env, data->cntNodes);
-            this->f[i] = NumVarMatrix(env, data->cntNodes);
-            this->y[i] = IloNumVarArray(env, data->cntNodes);
-            for (int j = 0; j < data->cntNodes; j++) {
-                this->f[i][j] = IloNumVarArray(env, data->cntNodes);
+        char name[20];
+        for (auto *arc : graph->arcs) {
+            o = arc->getO(), d = arc->getD();
+            sprintf(name, "y%d%d", o, d);
+            y[o][d] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
+            for (int k: graph->DuS) {
+                sprintf(name, "f%d%d%d", o, d, k);
+                this->f[o][d][k] = model.addVar(0.0, 1.0, 0, GRB_CONTINUOUS, name);
             }
         }
 
-        // Create the variable f^{ijk}
-        for (auto *arc : data->arcs) {
-            for (int k: data->DuS) {
-                sprintf(name, "f%d%d%d", arc->getO(), arc->getD(), k);
-                this->f[arc->getO()][arc->getD()][k] = IloNumVar(this->env, 0, 1, name);
-
-                this->model.add(this->f[arc->getO()][arc->getD()][k]);
-                this->model.add(IloConversion(env, this->f[arc->getO()][arc->getD()][k], ILOINT));
-                // Linear Relaxation
-                //this->model.add(IloConversion(env, this->f[arc->getO()][arc->getD()][k], ILOFLOAT));
-
-            }
+        for (int i = 0; i < n; i++) {
+            sprintf(name, "z%d", i);
+            z[i] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
         }
-
-        // Create the variable X^{ij}
-
-        for (auto *arc : data->nonDirectedArcs) {
-            sprintf(name, "x%d%d", arc->getO(), arc->getD());
-            this->x[arc->getO()][arc->getD()] = IloNumVar(this->env, 0, 1, name);
-
-            this->model.add(this->x[arc->getO()][arc->getD()]);
-            this->model.add(IloConversion(env, this->x[arc->getO()][arc->getD()], ILOINT));
-            // Linear Relaxation
-            //this->model.add(IloConversion(env, this->x[arc->getO()][arc->getD()], ILOFLOAT));
-        }
-
-        // Create the variable Y_{ij}
-        for (auto *arc : data->arcs) {
-            sprintf(name, "y%d%d", arc->getO(), arc->getD());
-            this->y[arc->getO()][arc->getD()] = IloNumVar(this->env, 0, 1, name);
-            this->y[arc->getD()][arc->getO()] = IloNumVar(this->env, 0, 1, name);
-
-            this->model.add(this->y[arc->getO()][arc->getD()]);
-            this->model.add(IloConversion(env, this->y[arc->getO()][arc->getD()], ILOINT));
-            //this->model.add(IloConversion(env, this->y[arc->getO()][arc->getD()], ILOFLOAT));
-
-            this->model.add(this->y[arc->getD()][arc->getO()]);
-            this->model.add(IloConversion(env, this->y[arc->getD()][arc->getO()], ILOINT));
-            //this->model.add(IloConversion(env, this->y[arc->getD()][arc->getO()], ILOFLOAT));
-        }
-
-
-    } catch (IloException &ex) {
+        model.update();
+    } catch (GRBException &ex) {
         cout << ex.getMessage() << endl;
+        cout << ex.getErrorCode() << endl;
         exit(EXIT_FAILURE);
     }
-
 }
 
-void Model::initModel(double thetaC, double thetaP, double thetaD) {
+void Model::initModel() {
     cout << "Begin the model creation" << endl;
-    cplex.setParam(IloCplex::Param::TimeLimit, 600);
-    cplex.setParam(IloCplex::TreLim, 7000);
-    cplex.setOut(env.getNullStream());
-    objectiveFunction(thetaC, thetaP, thetaD);
-    c2();
-    c3();
-    c4();
-    c5();
-    c6();
-    c7();
-    c8c9();
-    c10();
-    c11();
-    c12();
+    objectiveFunction();
+    rootFlow(), flowConservation(), terminalsFlow();
+    relXandY(), maxArcs();
+    limDelayAndJitter(), limVariation();
     cout << "All done!" << endl;
 }
 
-void Model::objectiveFunction(double thetaC, double thetaP, double thetaD) {
-    IloExpr objExpr(env);
-    double mi;
-    int i, j;
-    for (auto *arc : data->nonDirectedArcs) {
-        i = arc->getO(), j = arc->getD();
-        if (i != 0 && j != 0) {
-            mi = thetaC + (thetaP * arc->getDelay()) - (thetaD * arc->getEstimateLinkDuration());
-            objExpr += this->x[i][j] * mi;
-        }
-    }
-    IloObjective obj = IloObjective(env, objExpr, IloObjective::Minimize);
-    this->model.add(obj);
-
+void Model::objectiveFunction() {
+    GRBLinExpr objective;
+    for (auto k : graph->terminals) objective += z[k];
+    model.setObjective(objective, GRB_MINIMIZE);
     cout << "Objective Function was added successfully!" << endl;
 }
 
-void Model::c2() {
-    for (int k : data->DuS) {
-        IloExpr aux(env);
-        IloExpr aux2(env);
-        for (auto *arc : data->arcs) {
-            if (arc->getO() == data->root) {
-                aux += this->f[data->root][arc->getD()][k];
-            } else if (arc->getD() == data->root) {
-                aux2 += this->f[arc->getO()][data->root][k];
-            }
+void Model::rootFlow() {
+    int o, d, root = graph->getRoot();
+    for (auto k : graph->DuS) {
+        GRBLinExpr flowExpr, rootExpr;
+        for (auto *arc : graph->arcs) {
+            o = arc->getO(), d = arc->getD();
+            if (o == root) flowExpr += f[root][d][k];
+            if (d == root) rootExpr += f[o][root][k];
         }
-        this->model.add((aux - aux2) == 1);
-        aux.end();
-        aux2.end();
+        model.addConstr((flowExpr - rootExpr) == 1, "root_flow");
     }
-    cout << "Constraint C2 was added successfully!" << endl;
+    model.update();
+    cout << "Flow on root node" << endl;
 }
 
-void Model::c3() {
-    for (int k : data->DuS) {
-        for (int j = 0; j < data->cntNodes; j++) {
-            if (j != k && j != data->root) {
-                IloExpr aux(env);
-                IloExpr aux2(env);
-                for (auto *arc : data->arcs) {
-                    if (arc->getD() == j)
-                        aux += this->f[arc->getO()][j][k];
-                    if (arc->getO() == j)
-                        aux2 += this->f[j][arc->getD()][k];
+void Model::flowConservation() {
+    int o, d, root = graph->getRoot();
+    for (auto k : graph->DuS) {
+        for (int j = 0; j < graph->getN(); j++) {
+            if (j != root && j != k) {
+                GRBLinExpr flowIn, flowOut;
+                for (auto *arc : graph->arcs) {
+                    o = arc->getO(), d = arc->getD();
+                    if (o == j) flowOut += f[j][d][k];
+                    if (d == j) flowIn += f[o][j][k];
                 }
-                this->model.add((aux - aux2) == 0);
-                aux.end();
-                aux2.end();
+                model.addConstr((flowIn - flowOut) == 0, "flow_conservation");
             }
         }
     }
-    cout << "Constraint C3 was added successfully!" << endl;
+    model.update();
+    cout << "Flow conservation" << endl;
 }
 
-void Model::c4() {
-    int i, j;
-    for (int k : data->DuS) {
-        IloExpr aux(env);
-        IloExpr aux2(env);
-        for (auto *arc : data->arcs) {
-            i = arc->getO(), j = arc->getD();
-            if (i == k) aux += this->f[k][j][k];
-            if (j == k) aux2 += this->f[i][k][k];
+void Model::terminalsFlow() {
+    int o, d;
+    for (auto k : graph->DuS) {
+        GRBLinExpr flowIn, flowOut;
+        for (auto *arc : graph->arcs) {
+            o = arc->getO(), d = arc->getD();
+            if (o == k) flowOut += f[k][d][k];
+            if (d == k) flowIn += f[o][k][k];
         }
-        this->model.add((aux - aux2) == -1);
-        aux.end();
-        aux2.end();
+        model.addConstr((flowOut - flowIn) == -1, "flow_on_terminals");
     }
-
-    cout << "Constraint C4 was added successfully!" << endl;
+    model.update();
+    cout << "Flow on terminals" << endl;
 }
 
-void Model::c5() {
-    int i, j;
-    for (auto *arc : data->arcs) {
-        i = arc->getO(), j = arc->getD();
-        for (int k : data->DuS) {
-            model.add(this->f[i][j][k] <= this->y[i][j]);
+void Model::relXandY() {
+    int o, d;
+    for (auto *arc : graph->arcs) {
+        o = arc->getO(), d = arc->getD();
+        for (auto k : graph->DuS) model.addConstr(f[o][d][k] <= y[o][d], "f_and_y_relation");
+    }
+    model.update();
+    cout << "f and Y relation" << endl;
+}
+
+void Model::maxArcs() {
+    GRBLinExpr totalArcs;
+    for (auto *arc : graph->arcs)
+        totalArcs += y[arc->getO()][arc->getD()];
+    model.addConstr(totalArcs == graph->getN() - 1, "maximum_of_arcs");
+
+    model.update();
+    cout << "maximum of arcs in the tree" << endl;
+}
+
+void Model::limDelayAndJitter() {
+    int o, d, paramDelay, paramJitter;
+    for (auto k : graph->terminals) {
+        GRBLinExpr limDelay, limJitter;
+        for (auto *arc : graph->arcs) {
+            o = arc->getO(), d = arc->getD();
+            limDelay += arc->getDelay() * f[o][d][k];
+            limJitter += arc->getJitter() * f[o][d][k];
         }
+        paramDelay = graph->getParamDelay(), paramJitter = graph->getParamJitter();
+        model.addConstr(limDelay <= (paramDelay + (graph->getBigMDelay() - paramDelay) * z[k]), "delay_limit");
+        model.addConstr(limJitter <= (paramJitter + (graph->getBigMJitter() - paramJitter) * z[k]), "jitter_limit");
     }
-    cout << "Constraint C5 was added successfully!" << endl;
+    model.update();
+    cout << "Delay and Jitter limits" << endl;
 }
 
-void Model::c6() {
-    IloExpr c6(env);
-    for (auto *arc : data->arcs) {
-        c6 += y[arc->getO()][arc->getD()];
-    }
-    model.add(c6 == (data->cntNodes - 1));
-
-    cout << "Constraint C6 was added successfully!" << endl;
-}
-
-void Model::c7() {
-    int i, j;
-    for (auto arc : data->nonDirectedArcs) {
-        i = arc->getO(), j = arc->getD();
-        model.add(y[i][j] + y[j][i] == x[i][j]);
-    }
-    cout << "\nConstraint C7 was added successfully!" << endl;
-}
-
-void Model::c8c9() {
-    for (int k : data->terminals) {
-        IloExpr c8(env);
-        IloExpr c9(env);
-        for (auto *arc : data->arcs) {
-            c8 += arc->getDelay() * this->f[arc->getO()][arc->getD()][k];
-            c9 += arc->getJitter() * this->f[arc->getO()][arc->getD()][k];
-        }
-        this->model.add(c8 <= data->paramDelay);
-        this->model.add(c9 <= data->paramJitter);
-
-        c8.end();
-        c9.end();
-    }
-    cout << "Constraints C8 and C9 was added successfully!" << endl;
-}
-
-void Model::c10() {
-    for (auto k : data->terminals) {
-        for (auto l : data->terminals) {
+void Model::limVariation() {
+    int o, d, bigMK, bigML;
+    for (auto k : graph->terminals) {
+        for (auto l : graph->terminals) {
             if (k != l) {
-                IloExpr c10(env);
-                for (auto *arc : data->arcs) {
-                    c10 += arc->getDelay() *
-                           (this->f[arc->getO()][arc->getD()][k] - this->f[arc->getO()][arc->getD()][l]);
+                GRBLinExpr delayVariation;
+                for (auto *arc : graph->arcs) {
+                    o = arc->getO(), d = arc->getD();
+                    delayVariation += arc->getDelay() * (f[o][d][k] - f[o][d][l]);
                 }
-                this->model.add(c10 <= data->paramDelayVariation);
-                c10.end();
+                bigMK = graph->getBigMDelay() -
+                        min(graph->getShpTerminal(l) + graph->getParamVariation(), graph->getParamDelay());
+                bigML = graph->getParamDelay() - graph->getParamVariation() - graph->getShpTerminal(l);
+                model.addConstr(delayVariation <= graph->getParamVariation() + bigMK * z[k] + bigML * z[l],
+                                "limit_of_variation_between_pairs");
             }
         }
     }
-    cout << "Constraint C10 was added successfully!" << endl;
-}
-
-void Model::c11() {
-    for (int k : data->terminals) {
-        this->model.add(this->f[data->root][0][k] == 0);
-    }
-    cout << "Constraint C11 was added successfully!" << endl;
-}
-
-void Model::c12() {
-    for (int q : data->nonTerminals) {
-        for (int e : data->DuS) {
-            if (e != q)
-                this->model.add(this->f[0][q][e] == 0);
-        }
-    }
-    cout << "Constraint C12 was added successfully!" << endl;
+    model.update();
+    cout << "Delay variation limits" << endl;
 }
 
 void Model::solve() {
-    this->cplex.exportModel("model.lp");
-    this->cplex.solve();
+    model.write("model.lp");
+    try {
+        model.optimize();
+    } catch(GRBException &ex) {
+        cout << ex.getMessage() << endl;
+    }
+
 }
 
-void Model::showSolution(const char *input, const char *outputFile, double thetaC, double thetaP, double thetaD) {
-    try {
-        FILE *output;
-        output = fopen(outputFile, "a");
-        fprintf(output, "%s: ", input);
-        double fo = 0;
-        int i, j;
-        for (auto *arc : data->nonDirectedArcs) {
-            i = arc->getO(), j = arc->getD();
-            if (i != 0 && j != 0 && cplex.getValue(this->x[i][j]) > 0.5) {
-                printf("[%d, %d], ", i, j);
-                fo += thetaC + arc->getDelay() * thetaP - arc->getEstimateLinkDuration() * thetaD;
-            }
-        }
-        cout << "\n ---- CPLEX_FO = " << this->cplex.getObjValue() << " ---- SCALE_FO = " << fo
-             << " ---- Time = "
-             << this->cplex.getCplexTime() << " ---- GAP = " << this->cplex.getMIPRelativeGap()
-             << " ---- LB = " << cplex.getBestObjValue() << endl;
+void Model::showSolution() {
+    cout << model.get(GRB_DoubleAttr_ObjVal) << endl;
+    for (int i = 0; i < graph->getN(); i++)
+        cout << z[i].get(GRB_DoubleAttr_X) << endl;
 
-        fprintf(output,
-                " ---- CPLEX_FO = %g ---- FO = %lf ---- Time = %g ---- GAP = %g ---- LB = %g\n",
-                cplex.getObjValue(), fo, cplex.getTime(), cplex.getMIPRelativeGap(), cplex.getBestObjValue());
-        fclose(output);
-    } catch (IloException &exception) {
-        FILE *output;
-        output = fopen(outputFile, "a");
-        fprintf(output, "%s: ", input);
-        fprintf(output, " ---- Time = %g ---- LB = %g\n", cplex.getTime(), cplex.getBestObjValue());
-        fclose(output);
-        cout << "No Feasible Solution " << exception.getMessage() << endl;
-    }
 }
