@@ -203,6 +203,7 @@ void Model::limVariation() {
 
 void Model::solve() {
     try {
+        model.set("TimeLimit", "600.0");
         model.write("model.lp");
         model.optimize();
     } catch (GRBException &ex) {
@@ -211,22 +212,34 @@ void Model::solve() {
 
 }
 
-void Model::showSolution() {
+void Model::showSolution(string instance) {
     try {
-        cout << "FO: ";
-        cout << model.get(GRB_DoubleAttr_ObjVal) << endl;
-//        for (int i : graph->terminals)
-//            cout << "i: " << i << ", " << z[i].get(GRB_DoubleAttr_X) << endl;
+        ofstream output;
+        output.open(instance, ofstream::app);
+
+        double ub = model.get(GRB_DoubleAttr_ObjVal), lb = model.get(GRB_DoubleAttr_ObjBound);
+        output << ub << "\n";
+        output << lb << "\n";
+        output << model.get(GRB_DoubleAttr_Runtime) << "\n";
+
+        if (ub != 0) output << (ub - lb) / ub << "\n";
+
+        output << "---------\n";
+        for (auto i : graph->terminals)
+            if (z[i].get(GRB_DoubleAttr_X) > 0.9)
+                output << i+1 << "\n";
+        output << "---------\n";
         for (auto k : graph->terminals) {
             for (int o = 0; o < graph->getN(); o++) {
                 if (!graph->removed[o]) {
                     for (auto *arc : graph->arcs[o]) {
                         if (f[o][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.9)
-                            cout << arc->getO() << ", " << arc->getD() << endl;
+                            output << k << " - " << arc->getO() << ", " << arc->getD() << endl;
                     }
                 }
             }
         }
+        output.close();
     } catch (GRBException &ex) {
         cout << ex.getMessage() << endl;
     }

@@ -41,7 +41,7 @@ public:
 
     void solve();
 
-    void showSolution();
+    void showSolution(string instance);
 
 };
 

@@ -44,8 +44,12 @@ Include.h
 Graph.h
 /home/carlos/CLionProjects/MaxService/headers/Graph.h
 
-/home/carlos/CLionProjects/MaxService/src/Model.cpp
-../headers/Model.h
+/home/carlos/CLionProjects/MaxService/main.cpp
+sys/stat.h
+-
+headers/Graph.h
+/home/carlos/CLionProjects/MaxService/headers/Graph.h
+headers/Model.h
 /home/carlos/CLionProjects/MaxService/headers/Model.h
 
 /opt/gurobi811/linux64/include/gurobi_c++.h

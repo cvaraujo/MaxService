@@ -5,12 +5,15 @@
 #include "../headers/Graph.h"
 #include "../headers/Include.h"
 
-Graph::Graph(string instance, string param) {
+Graph::Graph(string instance, string param, string outputName) {
     int u, v;
     double delay, jitter, bandwidth, ldp, paramDelayToken, paramJitterToken, paramVariationToken, paramBandwidthToken;
     int delayInt, jitterInt;
     string token;
     ifstream fileGraph, fileParam;
+    ofstream output;
+
+    output.open(outputName);
 
     fileParam.open(param, fstream::in);
 
@@ -42,12 +45,16 @@ Graph::Graph(string instance, string param) {
         fileGraph >> token;
         if (token == "Nodes") {
             fileGraph >> n;
+            output << n << "\n";
             graphShp = BoostGraph(n);
             arcs = vector<vector<Arc *>>(n, vector<Arc *>());
             removed = vector<bool>(n);
         }
 
-        if (token == "Edges") fileGraph >> m;
+        if (token == "Edges") {
+            fileGraph >> m;
+            output << m << "\n";
+        }
 
         if (token == "E") {
             fileGraph >> u >> v >> delay >> jitter >> bandwidth >> ldp;
@@ -71,7 +78,12 @@ Graph::Graph(string instance, string param) {
             make_iterator_property_map(predecessors.begin(), get(vertex_index, graphShp))).distance_map(
             make_iterator_property_map(distance.begin(), get(vertex_index, graphShp))));
 
-    for (int i = 0; i < n; i++) removed[i] = distance[i] >= INT_MAX;
+    int cntRemoved = n;
+    for (int i = 0; i < n; i++) {
+        removed[i] = distance[i] >= INT_MAX;
+        if (removed[i]) cntRemoved--;
+    }
+    output << cntRemoved << "\n";
 
     bool isTerminal;
     for (int i = 0; i < n; ++i) {
@@ -89,7 +101,7 @@ Graph::Graph(string instance, string param) {
         }
     }
 
-    int o, d;
+    int o, d, cntRemovedEdge = m;
     for (o = 0; o < n; o++) {
         if (!removed[o]) {
             for (int j = 0; j < int(arcs[o].size()); j++) {
@@ -97,6 +109,7 @@ Graph::Graph(string instance, string param) {
                 d = arc->getD();
                 if (removed[d]) {
                     arcs[o].erase(arcs[o].begin() + j);
+                    cntRemovedEdge--;
                 } else {
                     this->delayVector.push_back(arc->getDelay()), this->jitterVector.push_back(arc->getJitter());
                 }
@@ -104,18 +117,21 @@ Graph::Graph(string instance, string param) {
         }
     }
 
+    output << cntRemovedEdge << "\n";
+
     sort(delayVector.begin(), delayVector.end());
     sort(jitterVector.begin(), jitterVector.end());
 
     for (int i = 0; i < n; i++)
         bigMDelay += delayVector[i], bigMJitter += jitterVector[i];
 
-    cout << "BigM Delay = " << bigMDelay << endl;
-    cout << "BigM Jitter = " << bigMJitter << endl;
-
-    cout << "Distance to terminals" << endl;
-    for (int i = 0; i < n; i++) cout << "k: " << i << ", distance: " << distance[i] << endl;
-
+//    cout << "BigM Delay = " << bigMDelay << endl;
+//    cout << "BigM Jitter = " << bigMJitter << endl;
+//
+//    cout << "Distance to terminals" << endl;
+//    for (int i = 0; i < n; i++) cout << "k: " << i << ", distance: " << distance[i] << endl;
+    output << "graph ends\n";
+    output.close();
     cout << "Load graph successfully" << endl;
 }
 

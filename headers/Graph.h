@@ -25,7 +25,7 @@ public:
     vector<int> terminals, nonTerminals, DuS, delayVector, jitterVector;
     vector<bool> removed;
 
-    Graph(string instance, string param);
+    Graph(string instance, string param, string outputName);
 
     void showGraph();
 
