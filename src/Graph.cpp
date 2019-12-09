@@ -127,12 +127,13 @@ Graph::Graph(string instance, string param, string outputName) {
 
 //    cout << "BigM Delay = " << bigMDelay << endl;
 //    cout << "BigM Jitter = " << bigMJitter << endl;
-//
+
 //    cout << "Distance to terminals" << endl;
 //    for (int i = 0; i < n; i++) cout << "k: " << i << ", distance: " << distance[i] << endl;
-    output << "graph ends\n";
+//    output << "graph ends\n";
     output.close();
     cout << "Load graph successfully" << endl;
+//    getchar();
 }
 
 void Graph::showGraph() {

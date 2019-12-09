@@ -7,7 +7,6 @@ int main(int argc, const char *argv[]) {
         mkdir("results", 0777);
         auto *graph = new Graph("toy.txt",
                                 "param-toy.txt", "results/result_teste.txt");
-//        graph->showGraph();
         auto *model = new Model(graph);
         model->initModel();
         model->solve();

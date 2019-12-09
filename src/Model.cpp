@@ -168,8 +168,8 @@ void Model::limDelayAndJitter() {
             }
         }
         paramDelay = graph->getParamDelay(), paramJitter = graph->getParamJitter();
-        model.addConstr(limDelay <= (paramDelay + (graph->getBigMDelay() - paramDelay) * z[k]), "delay_limit");
-        model.addConstr(limJitter <= (paramJitter + (graph->getBigMJitter() - paramJitter) * z[k]), "jitter_limit");
+        model.addConstr(limDelay <= (paramDelay + (1000000 - paramDelay) * z[k]), "delay_limit");
+        model.addConstr(limJitter <= (paramJitter + (1000000 - paramJitter) * z[k]), "jitter_limit");
     }
     model.update();
     cout << "Delay and Jitter limits" << endl;
@@ -203,7 +203,7 @@ void Model::limVariation() {
 
 void Model::solve() {
     try {
-        model.set("TimeLimit", "600.0");
+        model.set("TimeLimit", "3600.0");
         model.write("model.lp");
         model.optimize();
     } catch (GRBException &ex) {
