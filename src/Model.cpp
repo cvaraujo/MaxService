@@ -2,6 +2,7 @@
 // Created by carlos on 06/03/19.
 //
 
+#include <chrono>
 #include "../headers/Model.h"
 
 Model::Model(Graph *graph) {
@@ -52,12 +53,31 @@ void Model::initialize() {
 
 void Model::initModel() {
     cout << "Begin the model creation" << endl;
+
+    auto start = chrono::steady_clock::now();
+    preprocessing();
+    auto end = chrono::steady_clock::now();
+    this->preprocessingTime = chrono::duration_cast<chrono::seconds>(end - start).count();
+
     objectiveFunction();
     rootFlow(), flowConservation(), terminalsFlow();
     relXandY(), maxArcs();
     limDelayAndJitter();
     limVariation();
     cout << "All done!" << endl;
+}
+
+void Model::preprocessing() {
+    graph->graphReduction();
+
+    cout << "Edges to remove" << endl;
+    for (int j = 0; j < graph->getN(); ++j)
+        if (j != graph->getRoot())
+            for (auto arc : graph->arcs[j])
+                for (auto t : graph->terminals)
+                    if (graph->removedF[j][arc->getD()][t])
+                        model.addConstr(f[j][arc->getD()][t] == 0);
+    model.update();
 }
 
 void Model::objectiveFunction() {
@@ -80,7 +100,7 @@ void Model::rootFlow() {
                 }
             }
         }
-        model.addConstr((flowExpr - rootExpr) == 1, "root_flow");
+        model.addConstr((flowExpr - rootExpr) == 1, "root_flow_all_" + to_string(k));
     }
     model.update();
     cout << "Flow on root node" << endl;
@@ -101,7 +121,7 @@ void Model::flowConservation() {
                         }
                     }
                 }
-                model.addConstr((flowIn - flowOut) == 0, "flow_conservation" + to_string(j));
+                model.addConstr((flowIn - flowOut) == 0, "flow_conservation_" + to_string(j) + "_" + to_string(k));
             }
         }
     }
@@ -122,7 +142,7 @@ void Model::terminalsFlow() {
                 }
             }
         }
-        model.addConstr((flowOut - flowIn) == -1, "flow_on_terminals");
+        model.addConstr((flowOut - flowIn) == -1, "flow_on_terminals_" + to_string(k));
     }
     model.update();
     cout << "Flow on terminals" << endl;
@@ -134,7 +154,10 @@ void Model::relXandY() {
         if (!graph->removed[o]) {
             for (auto *arc : graph->arcs[o]) {
                 o = arc->getO(), d = arc->getD();
-                for (auto k : graph->DuS) model.addConstr(f[o][d][k] <= y[o][d], "f_and_y_relation");
+                for (auto k : graph->DuS)
+                    model.addConstr(f[o][d][k] <= y[o][d],
+                                    "f_and_y_relation_" + to_string(o) + "_" + to_string(d) +
+                                    "_" + to_string(k));
             }
         }
     }
@@ -168,8 +191,10 @@ void Model::limDelayAndJitter() {
             }
         }
         paramDelay = graph->getParamDelay(), paramJitter = graph->getParamJitter();
-        model.addConstr(limDelay <= (paramDelay + (1000000 - paramDelay) * z[k]), "delay_limit");
-        model.addConstr(limJitter <= (paramJitter + (1000000 - paramJitter) * z[k]), "jitter_limit");
+        model.addConstr(limDelay <= (paramDelay + (graph->getBigMDelay() - paramDelay) * z[k]),
+                        "delay_limit_" + to_string(k));
+        model.addConstr(limJitter <= (paramJitter + (graph->getBigMJitter() - paramJitter) * z[k]),
+                        "jitter_limit_" + to_string(k));
     }
     model.update();
     cout << "Delay and Jitter limits" << endl;
@@ -193,7 +218,7 @@ void Model::limVariation() {
                         min(graph->getShpTerminal(l) + graph->getParamVariation(), graph->getParamDelay());
                 bigML = graph->getParamDelay() - graph->getParamVariation() - graph->getShpTerminal(l);
                 model.addConstr(delayVariation <= graph->getParamVariation() + bigMK * z[k] + bigML * z[l],
-                                "limit_of_variation_between_pairs");
+                                "limit_of_variation_between_pairs_" + to_string(k) + "_" + to_string(l));
             }
         }
     }
@@ -203,7 +228,8 @@ void Model::limVariation() {
 
 void Model::solve() {
     try {
-        model.set("TimeLimit", "3600.0");
+        model.set("TimeLimit", "1200.0");
+        model.update();
         model.write("model.lp");
         model.optimize();
     } catch (GRBException &ex) {
@@ -216,10 +242,10 @@ void Model::showSolution(string instance) {
     try {
         ofstream output;
         output.open(instance, ofstream::app);
-
+        output << preprocessingTime << endl;
         double ub = model.get(GRB_DoubleAttr_ObjVal), lb = model.get(GRB_DoubleAttr_ObjBound);
-        output << ub << "\n";
-        output << lb << "\n";
+        output << ub << endl;
+        output << lb << endl;
         output << model.get(GRB_DoubleAttr_Runtime) << "\n";
 
         if (ub != 0) output << (ub - lb) / ub << "\n";
@@ -227,18 +253,18 @@ void Model::showSolution(string instance) {
         output << "---------\n";
         for (auto i : graph->terminals)
             if (z[i].get(GRB_DoubleAttr_X) > 0.9)
-                output << i+1 << "\n";
+                output << i + 1 << "\n";
         output << "---------\n";
-        for (auto k : graph->terminals) {
-            for (int o = 0; o < graph->getN(); o++) {
-                if (!graph->removed[o]) {
-                    for (auto *arc : graph->arcs[o]) {
-                        if (f[o][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.9)
-                            output << k << " - " << arc->getO() << ", " << arc->getD() << endl;
-                    }
-                }
-            }
-        }
+//        for (auto k : graph->terminals) {
+//            for (int o = 0; o < graph->getN(); o++) {
+//                if (!graph->removed[o]) {
+//                    for (auto *arc : graph->arcs[o]) {
+//                        if (f[o][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.9)
+//                            output << k << " - " << arc->getO() << ", " << arc->getD() << endl;
+//                    }
+//                }
+//            }
+//        }
         output.close();
     } catch (GRBException &ex) {
         cout << ex.getMessage() << endl;

@@ -9,23 +9,51 @@
 #include "Include.h"
 
 using namespace std;
+using namespace boost;
+
+struct SPPRC_Graph_Vert {
+    SPPRC_Graph_Vert(int n = 0, int c = 0) : num(n), con(c) {}
+
+    int num;
+    // Resource consumed
+    int con;
+};
+
+struct SPPRC_Graph_Arc {
+    SPPRC_Graph_Arc(int n = 0, int c = 0, int r = 0) : num(n), cost(c), res(r) {}
+
+    int num;
+    // traversal cost
+    int cost;
+    // traversal resource
+    int res;
+};
+
+typedef adjacency_list<vecS, vecS, directedS, SPPRC_Graph_Vert, SPPRC_Graph_Arc> SPPRCGraph;
 
 class Graph {
-    typedef graph_traits <BoostGraph>::vertex_descriptor vertex_descriptor;
+    typedef graph_traits<SPPRCGraph>::vertex_descriptor vertex_descriptor;
+    typedef graph_traits<SPPRCGraph>::edge_descriptor edge_descriptor;
 
     int n, m, paramDelay, paramJitter, paramVariation, paramBandwidth, root, bigMDelay = 0, bigMJitter = 0;
 
-    BoostGraph graphShp;
+    BoostGraph graphDelaySP, graphJitterSP;
+    SPPRCGraph graphDelay, graphJitter;
 
-    vector<vertex_descriptor> predecessors;
-    vector<int> distance;
+    vector<VertexDescriptor> predecessors;
+    vector<int> distanceDelay, distanceJitter;
+
+    vector<bool> notAttend;
 
 public:
     vector<vector<Arc *>> arcs;
     vector<int> terminals, nonTerminals, DuS, delayVector, jitterVector;
     vector<bool> removed;
+    vector<vector<vector<bool>>> removedF;
 
     Graph(string instance, string param, string outputName);
+
+    void graphReduction();
 
     void showGraph();
 

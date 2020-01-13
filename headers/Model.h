@@ -9,13 +9,15 @@
 #include "Graph.h"
 
 class Model {
-//    typedef IloArray<IloNumVarArray> NumVarMatrix;
     Graph *graph;
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
     vector<vector<vector<GRBVar>>> f;
     vector<vector<GRBVar>> y;
     vector<GRBVar> z;
+    int preprocessingTime;
+
+    void preprocessing();
 
     void objectiveFunction();
 

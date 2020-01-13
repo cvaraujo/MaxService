@@ -16,6 +16,12 @@
 #include "boost/graph/adjacency_list.hpp"
 #include "boost/graph/dijkstra_shortest_paths.hpp"
 #include "boost/graph/adjacency_list.hpp"
+#include "boost/graph/r_c_shortest_paths.hpp"
+#include "boost/config.hpp"
+
+#ifdef BOOST_MSVC
+#  pragma warning(disable: 4267)
+#endif
 
 using namespace std;
 using namespace boost;
@@ -23,6 +29,5 @@ using namespace boost;
 typedef adjacency_list<vecS, vecS, directedS, no_property, property<edge_weight_t, int>> BoostGraph;
 typedef graph_traits<BoostGraph>::edge_descriptor EdgeDescriptor;
 typedef graph_traits<BoostGraph>::vertex_descriptor VertexDescriptor;
-
 
 #endif //MRP_INCLUDE_H
