@@ -43,13 +43,12 @@ class Graph {
     vector<VertexDescriptor> predecessors;
     vector<int> distanceDelay, distanceJitter;
 
-    vector<bool> notAttend;
-
 public:
     vector<vector<Arc *>> arcs;
     vector<int> terminals, nonTerminals, DuS, delayVector, jitterVector;
     vector<bool> removed;
     vector<vector<vector<bool>>> removedF;
+    vector<bool> notAttend;
 
     Graph(string instance, string param, string outputName);
 

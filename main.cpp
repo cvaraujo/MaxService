@@ -5,8 +5,8 @@
 int main(int argc, const char *argv[]) {
     if (argc < 4) {
         mkdir("results", 0777);
-        auto *graph = new Graph("Washington-50/40/washington-50-40-23.txt",
-                                "Washington-50/40/param-washington-50-40-23.txt", "results/result_teste.txt");
+        auto *graph = new Graph("Washington-75/10/washington-75-10-4.txt",
+                                "Washington-75/10/param-washington-75-10-4.txt", "results/result_teste.txt");
         auto *model = new Model(graph);
         model->initModel();
         model->solve();

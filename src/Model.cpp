@@ -55,7 +55,7 @@ void Model::initModel() {
     cout << "Begin the model creation" << endl;
 
     auto start = chrono::steady_clock::now();
-    preprocessing();
+//    preprocessing();
     auto end = chrono::steady_clock::now();
     this->preprocessingTime = chrono::duration_cast<chrono::seconds>(end - start).count();
 
@@ -70,19 +70,26 @@ void Model::initModel() {
 void Model::preprocessing() {
     graph->graphReduction();
 
+//    for (int j = 0; j < graph->getN(); ++j) {
+//        if (graph->notAttend[j]) model.addConstr(z[j] == 1);
+//    }
+
     cout << "Edges to remove" << endl;
-    for (int j = 0; j < graph->getN(); ++j)
-        if (j != graph->getRoot())
-            for (auto arc : graph->arcs[j])
-                for (auto t : graph->terminals)
-                    if (graph->removedF[j][arc->getD()][t])
-                        model.addConstr(f[j][arc->getD()][t] == 0);
+    for (int j = 0; j < graph->getN(); ++j) {
+        if (graph->removed[j]) continue;
+        for (auto arc : graph->arcs[j]) {
+            for (auto t : graph->terminals)
+                if (graph->removedF[j][arc->getD()][t])
+                    model.addConstr(f[j][arc->getD()][t] == 0);
+//                else cout << j + 1 << " - " << arc->getD() + 1 << " = " << t+1 << endl;
+        }
+    }
     model.update();
 }
 
 void Model::objectiveFunction() {
     GRBLinExpr objective;
-    for (auto k : graph->terminals) objective += z[k];
+    for (auto k : graph->DuS) objective += z[k];
     model.setObjective(objective, GRB_MINIMIZE);
     cout << "Objective Function was added successfully!" << endl;
 }
@@ -100,7 +107,7 @@ void Model::rootFlow() {
                 }
             }
         }
-        model.addConstr((flowExpr - rootExpr) == 1, "root_flow_all_" + to_string(k));
+        model.addConstr((flowExpr - rootExpr) <= 1, "root_flow_all_" + to_string(k));
     }
     model.update();
     cout << "Flow on root node" << endl;
@@ -255,16 +262,16 @@ void Model::showSolution(string instance) {
             if (z[i].get(GRB_DoubleAttr_X) > 0.9)
                 output << i + 1 << "\n";
         output << "---------\n";
-//        for (auto k : graph->terminals) {
-//            for (int o = 0; o < graph->getN(); o++) {
-//                if (!graph->removed[o]) {
-//                    for (auto *arc : graph->arcs[o]) {
-//                        if (f[o][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.9)
-//                            output << k << " - " << arc->getO() << ", " << arc->getD() << endl;
-//                    }
-//                }
-//            }
-//        }
+        for (auto k : graph->terminals) {
+            for (int o = 0; o < graph->getN(); o++) {
+                if (!graph->removed[o]) {
+                    for (auto *arc : graph->arcs[o]) {
+                        if (f[o][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.9)
+                            output << k << " - " << arc->getO() << ", " << arc->getD() << endl;
+                    }
+                }
+            }
+        }
         output.close();
     } catch (GRBException &ex) {
         cout << ex.getMessage() << endl;
