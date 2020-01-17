@@ -8,6 +8,7 @@
 Model::Model(Graph *graph) {
     if (graph != nullptr) {
         this->graph = graph;
+        graph->graphReduction();
         initialize();
     } else exit(EXIT_FAILURE);
 
@@ -29,10 +30,10 @@ void Model::initialize() {
             if (!graph->removed[o]) {
                 for (auto *arc : graph->arcs[o]) {
                     d = arc->getD();
-                    sprintf(name, "y%d%d", o, d);
+                    sprintf(name, "y_%d_%d", o, d);
                     y[o][d] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
                     for (int k: graph->DuS) {
-                        sprintf(name, "f%d%d%d", o, d, k);
+                        sprintf(name, "f_%d_%d_%d", o, d, k);
                         this->f[o][d][k] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
                     }
                 }
@@ -40,7 +41,7 @@ void Model::initialize() {
         }
 
         for (int i = 0; i < n; i++) {
-            sprintf(name, "z%d", i);
+            sprintf(name, "z_%d", i);
             z[i] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
         }
         model.update();
@@ -55,7 +56,7 @@ void Model::initModel() {
     cout << "Begin the model creation" << endl;
 
     auto start = chrono::steady_clock::now();
-//    preprocessing();
+    preprocessing();
     auto end = chrono::steady_clock::now();
     this->preprocessingTime = chrono::duration_cast<chrono::seconds>(end - start).count();
 
@@ -64,32 +65,44 @@ void Model::initModel() {
     relXandY(), maxArcs();
     limDelayAndJitter();
     limVariation();
+    primeToTerminals(), nonTerminalsLeafs();
     cout << "All done!" << endl;
 }
 
 void Model::preprocessing() {
-    graph->graphReduction();
 
 //    for (int j = 0; j < graph->getN(); ++j) {
 //        if (graph->notAttend[j]) model.addConstr(z[j] == 1);
 //    }
 
     cout << "Edges to remove" << endl;
-    for (int j = 0; j < graph->getN(); ++j) {
+    for (int j = 1; j < graph->getN(); j++) {
         if (graph->removed[j]) continue;
         for (auto arc : graph->arcs[j]) {
-            for (auto t : graph->terminals)
-                if (graph->removedF[j][arc->getD()][t])
+            for (auto t : graph->terminals) {
+                if (graph->removedF[j][arc->getD()][t]) {
                     model.addConstr(f[j][arc->getD()][t] == 0);
-//                else cout << j + 1 << " - " << arc->getD() + 1 << " = " << t+1 << endl;
+                }
+            }
         }
     }
     model.update();
+//
+//    for (auto t : graph->terminals) {
+//        for (int j = 0; j < graph->getN(); ++j) {
+//            for (auto arc : graph->arcs[j]) {
+//                if (!graph->removedF[j][arc->getD()][t]) {
+//                    cout << t << " : " << j << " - " << arc->getD() << endl;
+//                }
+//            }
+//        }
+//    }
+//    getchar();
 }
 
 void Model::objectiveFunction() {
     GRBLinExpr objective;
-    for (auto k : graph->DuS) objective += z[k];
+    for (auto k : graph->terminals) objective += z[k];
     model.setObjective(objective, GRB_MINIMIZE);
     cout << "Objective Function was added successfully!" << endl;
 }
@@ -99,15 +112,14 @@ void Model::rootFlow() {
     for (auto k : graph->terminals) {
         GRBLinExpr flowExpr, rootExpr;
         for (o = 0; o < graph->getN(); o++) {
-            if (!graph->removed[o]) {
-                for (auto *arc : graph->arcs[o]) {
-                    d = arc->getD();
-                    if (o == root) flowExpr += f[root][d][k];
-                    else if (d == root) rootExpr += f[o][root][k];
-                }
+            if (graph->removed[o]) continue;
+            for (auto *arc : graph->arcs[o]) {
+                d = arc->getD();
+                if (o == root) flowExpr += f[root][d][k];
+                else if (d == root) rootExpr += f[o][root][k];
             }
         }
-        model.addConstr((flowExpr - rootExpr) <= 1, "root_flow_all_" + to_string(k));
+        model.addConstr((flowExpr - rootExpr) == 1, "root_flow_all_" + to_string(k));
     }
     model.update();
     cout << "Flow on root node" << endl;
@@ -120,12 +132,11 @@ void Model::flowConservation() {
             if (j != root && j != k) {
                 GRBLinExpr flowIn, flowOut;
                 for (o = 0; o < graph->getN(); o++) {
-                    if (!graph->removed[o]) {
-                        for (auto *arc : graph->arcs[o]) {
-                            o = arc->getO(), d = arc->getD();
-                            if (o == j) flowOut += f[j][d][k];
-                            if (d == j) flowIn += f[o][j][k];
-                        }
+                    if (graph->removed[o]) continue;
+                    for (auto *arc : graph->arcs[o]) {
+                        o = arc->getO(), d = arc->getD();
+                        if (o == j) flowOut += f[j][d][k];
+                        if (d == j) flowIn += f[o][j][k];
                     }
                 }
                 model.addConstr((flowIn - flowOut) == 0, "flow_conservation_" + to_string(j) + "_" + to_string(k));
@@ -141,12 +152,11 @@ void Model::terminalsFlow() {
     for (auto k : graph->DuS) {
         GRBLinExpr flowIn, flowOut;
         for (o = 0; o < graph->getN(); o++) {
-            if (!graph->removed[o]) {
-                for (auto *arc : graph->arcs[o]) {
-                    d = arc->getD();
-                    if (o == k) flowOut += f[k][d][k];
-                    if (d == k) flowIn += f[o][k][k];
-                }
+            if (graph->removed[o]) continue;
+            for (auto *arc : graph->arcs[o]) {
+                d = arc->getD();
+                if (o == k) flowOut += f[k][d][k];
+                if (d == k) flowIn += f[o][k][k];
             }
         }
         model.addConstr((flowOut - flowIn) == -1, "flow_on_terminals_" + to_string(k));
@@ -158,14 +168,14 @@ void Model::terminalsFlow() {
 void Model::relXandY() {
     int o, d;
     for (o = 0; o < graph->getN(); o++) {
-        if (!graph->removed[o]) {
-            for (auto *arc : graph->arcs[o]) {
-                o = arc->getO(), d = arc->getD();
-                for (auto k : graph->DuS)
-                    model.addConstr(f[o][d][k] <= y[o][d],
-                                    "f_and_y_relation_" + to_string(o) + "_" + to_string(d) +
-                                    "_" + to_string(k));
-            }
+        if (graph->removed[o]) continue;
+        for (auto *arc : graph->arcs[o]) {
+            o = arc->getO(), d = arc->getD();
+            for (auto k : graph->DuS)
+                model.addConstr(f[o][d][k] <= y[o][d],
+                                "f_and_y_relation_" + to_string(o) + "_" + to_string(d) +
+                                "_" + to_string(k));
+
         }
     }
     model.update();
@@ -174,10 +184,12 @@ void Model::relXandY() {
 
 void Model::maxArcs() {
     GRBLinExpr totalArcs;
-    for (int o = 0; o < graph->getN(); o++)
-        if (!graph->removed[o])
-            for (auto *arc : graph->arcs[o])
-                totalArcs += y[arc->getO()][arc->getD()];
+    for (int o = 0; o < graph->getN(); o++) {
+        if (graph->removed[o]) continue;
+        for (auto *arc : graph->arcs[o]) {
+            totalArcs += y[arc->getO()][arc->getD()];
+        }
+    }
     model.addConstr(totalArcs == (graph->getN() - 1), "maximum_of_arcs");
 
     model.update();
@@ -189,12 +201,11 @@ void Model::limDelayAndJitter() {
     for (auto k : graph->terminals) {
         GRBLinExpr limDelay, limJitter;
         for (o = 0; o < graph->getN(); o++) {
-            if (!graph->removed[o]) {
-                for (auto *arc : graph->arcs[o]) {
-                    d = arc->getD();
-                    limDelay += arc->getDelay() * f[o][d][k];
-                    limJitter += arc->getJitter() * f[o][d][k];
-                }
+            if (graph->removed[o]) continue;
+            for (auto *arc : graph->arcs[o]) {
+                d = arc->getD();
+                limDelay += arc->getDelay() * f[o][d][k];
+                limJitter += arc->getJitter() * f[o][d][k];
             }
         }
         paramDelay = graph->getParamDelay(), paramJitter = graph->getParamJitter();
@@ -214,11 +225,10 @@ void Model::limVariation() {
             if (k != l) {
                 GRBLinExpr delayVariation;
                 for (o = 0; o < graph->getN(); o++) {
-                    if (!graph->removed[o]) {
-                        for (auto *arc : graph->arcs[o]) {
-                            d = arc->getD();
-                            delayVariation += arc->getDelay() * (f[o][d][k] - f[o][d][l]);
-                        }
+                    if (graph->removed[o]) continue;
+                    for (auto *arc : graph->arcs[o]) {
+                        d = arc->getD();
+                        delayVariation += arc->getDelay() * (f[o][d][k] - f[o][d][l]);
                     }
                 }
                 bigMK = graph->getBigMDelay() -
@@ -231,6 +241,23 @@ void Model::limVariation() {
     }
     model.update();
     cout << "Delay variation limits" << endl;
+}
+
+void Model::primeToTerminals() {
+    for (auto k : graph->terminals)
+        model.addConstr(f[graph->getRoot()][0][k] == 0, "prime_to_terminals_" + to_string(k));
+    model.update();
+}
+
+void Model::nonTerminalsLeafs() {
+    for (auto q : graph->nonTerminals) {
+        for (auto e : graph->DuS) {
+            if (e != q) {
+                model.addConstr(f[0][q][e] == 0, "non_terminals_leafs_" + to_string(q) + "_" + to_string(e));
+            }
+        }
+    }
+    model.update();
 }
 
 void Model::solve() {
@@ -260,16 +287,13 @@ void Model::showSolution(string instance) {
         output << "---------\n";
         for (auto i : graph->terminals)
             if (z[i].get(GRB_DoubleAttr_X) > 0.9)
-                output << i + 1 << "\n";
+                output << i << "\n";
         output << "---------\n";
-        for (auto k : graph->terminals) {
-            for (int o = 0; o < graph->getN(); o++) {
-                if (!graph->removed[o]) {
-                    for (auto *arc : graph->arcs[o]) {
-                        if (f[o][arc->getD()][k].get(GRB_DoubleAttr_X) > 0.9)
-                            output << k << " - " << arc->getO() << ", " << arc->getD() << endl;
-                    }
-                }
+        for (int o = 0; o < graph->getN(); o++) {
+            for (auto *arc : graph->arcs[o]) {
+                if (y[o][arc->getD()].get(GRB_DoubleAttr_X) > 0.9)
+                    output << arc->getO() << ", " << arc->getD() << endl;
+
             }
         }
         output.close();

@@ -15,6 +15,7 @@ class Model {
     vector<vector<vector<GRBVar>>> f;
     vector<vector<GRBVar>> y;
     vector<GRBVar> z;
+
     int preprocessingTime;
 
     void preprocessing();
@@ -34,6 +35,11 @@ class Model {
     void limDelayAndJitter();
 
     void limVariation();
+
+    void primeToTerminals();
+
+    void nonTerminalsLeafs();
+
 public:
     Model(Graph *graph);
 

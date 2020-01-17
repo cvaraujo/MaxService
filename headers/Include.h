@@ -15,9 +15,9 @@
 #include <gurobi_c++.h>
 #include "boost/graph/adjacency_list.hpp"
 #include "boost/graph/dijkstra_shortest_paths.hpp"
-#include "boost/graph/adjacency_list.hpp"
-#include "boost/graph/r_c_shortest_paths.hpp"
 #include "boost/config.hpp"
+#include "boost/graph/r_c_shortest_paths.hpp"
+
 
 #ifdef BOOST_MSVC
 #  pragma warning(disable: 4267)
