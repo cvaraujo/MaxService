@@ -247,17 +247,20 @@ void Model::primeToTerminals() {
     for (auto k : graph->terminals)
         model.addConstr(f[graph->getRoot()][0][k] == 0, "prime_to_terminals_" + to_string(k));
     model.update();
+    cout << "S' to terminals" << endl;
 }
 
 void Model::nonTerminalsLeafs() {
     for (auto q : graph->nonTerminals) {
         for (auto e : graph->DuS) {
             if (e != q) {
+                if (q == 0 || e == 0) continue;
                 model.addConstr(f[0][q][e] == 0, "non_terminals_leafs_" + to_string(q) + "_" + to_string(e));
             }
         }
     }
     model.update();
+    cout << "Non terminals are leafs" << endl;
 }
 
 void Model::solve() {
