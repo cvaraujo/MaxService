@@ -35,7 +35,7 @@ class Graph {
     typedef graph_traits<SPPRCGraph>::vertex_descriptor vertex_descriptor;
     typedef graph_traits<SPPRCGraph>::edge_descriptor edge_descriptor;
 
-    int n, m, paramDelay, paramJitter, paramVariation, paramBandwidth, root, bigMDelay = 0, bigMJitter = 0;
+    int n, nRemoved, m, paramDelay, paramJitter, paramVariation, paramBandwidth, root, bigMDelay = 0, bigMJitter = 0;
 
     BoostGraph graphDelaySP, graphJitterSP;
     SPPRCGraph graphDelay, graphJitter;
@@ -57,6 +57,8 @@ public:
     void showGraph();
 
     int getN() const;
+
+    int getNAfterRemove() const;
 
     void setN(int n);
 

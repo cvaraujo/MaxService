@@ -108,8 +108,9 @@ Graph::Graph(string instance, string param, string outputName) {
     while (!fileGraph.eof()) {
         fileGraph >> token;
         if (token == "Nodes") {
-            fileGraph >> n, n++;
+            fileGraph >> n;
             output << n << "\n";
+            nRemoved = n;
             graphDelaySP = BoostGraph(n);
             graphJitterSP = BoostGraph(n);
             arcs = vector<vector<Arc * >>(n, vector<Arc *>());
@@ -125,6 +126,7 @@ Graph::Graph(string instance, string param, string outputName) {
 
         if (token == "E") {
             fileGraph >> u >> v >> delay >> jitter >> bandwidth >> ldp;
+            u--, v--;
             if (bandwidth >= paramBandwidth) {
                 delayInt = int(1e5 * delay), jitterInt = int(1e6 * jitter);
                 Arc *arc = new Arc(u, v, delayInt, jitterInt, int(bandwidth), int(10 * ldp));
@@ -135,8 +137,8 @@ Graph::Graph(string instance, string param, string outputName) {
                 add_edge(u, v, jitterInt, graphJitterSP), add_edge(v, u, jitterInt, graphJitterSP);
             }
         }
-        if (token == "Root") fileGraph >> root;
-        if (token == "T") fileGraph >> u, terminals.push_back(u), DuS.push_back(u);
+        if (token == "Root") fileGraph >> root, root--;
+        if (token == "T") fileGraph >> u, u--, terminals.push_back(u), DuS.push_back(u);
     }
 
     property_map<BoostGraph, edge_weight_t>::type weightMapDelay = get(edge_weight, graphDelaySP);
@@ -148,17 +150,15 @@ Graph::Graph(string instance, string param, string outputName) {
             make_iterator_property_map(distanceDelay.begin(), get(vertex_index, graphDelaySP))));
 
     int cntRemoved = n;
-    for (int i = 1; i < n; i++) {
+    for (int i = 0; i < n; i++) {
         removed[i] = distanceDelay[i] > paramDelay;
-        if (removed[i]) cntRemoved--;
+        if (removed[i]) nRemoved--;
     }
 
-    output << cntRemoved << "\n";
-
-    arcs[root].push_back(new Arc(root, 0, paramDelay, paramJitter, 0, 0));
+    output << nRemoved << "\n";
 
     bool isTerminal;
-    for (int i = 1; i < n; ++i) {
+    for (int i = 0; i < n; ++i) {
         if (!removed[i]) {
             isTerminal = false;
             if (i != root) {
@@ -173,18 +173,12 @@ Graph::Graph(string instance, string param, string outputName) {
         }
     }
 
-    nonTerminals.push_back(0), DuS.push_back(0);
-    for (auto s : DuS) {
-        if (s == 0) continue;
-        arcs[0].push_back(new Arc(0, s, paramDelay, paramJitter, 0, 0));
-    }
-
     sort(delayVector.begin(), delayVector.end(), greater<int>());
     sort(jitterVector.begin(), jitterVector.end(), greater<int>());
 
-
-    for (int i = 0; i < n - 2; i++)
+    for (int i = 0; i < n - 1; i++)
         bigMDelay += delayVector[i], bigMJitter += jitterVector[i];
+
 
 //    cout << "BigM Delay = " << bigMDelay << endl;
 //    cout << "BigM Jitter = " << bigMJitter << endl;
@@ -222,7 +216,6 @@ void Graph::graphReduction() {
         if (!removed[u]) {
             for (auto arc : arcs[u]) {
                 j = arc->getD();
-                if (j == 0) continue;
                 add_edge(u, j, SPPRC_Graph_Arc(countEdges, arc->getDelay(), arc->getJitter()), graphDelay);
                 add_edge(u, j, SPPRC_Graph_Arc(countEdges++, arc->getJitter(), arc->getDelay()), graphJitter);
                 add_edge(j, u, SPPRC_Graph_Arc(countEdges, arc->getDelay(), arc->getJitter()), graphDelay);
@@ -236,7 +229,7 @@ void Graph::graphReduction() {
 
     // CSHP root -> DuS
     for (auto j : DuS) {
-        if (removed[j] || j == 0) continue;
+        if (removed[j]) continue;
 
         // Jitter
         r_c_shortest_paths
@@ -254,13 +247,13 @@ void Graph::graphReduction() {
                  default_r_c_shortest_paths_visitor());
 
         jitterFromCShp[j] = pareto_opt[0].cost;
-
+//        cout << j + 1 << " - " << jitterFromCShp[j] << endl;
         if (pareto_opt.empty() || jitterFromCShp[j] > paramJitter) notAttend[j] = true;
 
         // Delay
-        SPPRC_Graph_Vert &vert_prop = get(vertex_bundle, graphDelay)[j];
+        // SPPRC_Graph_Vert &vert_prop = get(vertex_bundle, graphDelay)[j];
 
-        vert_prop.con = paramJitter - minSPVec[j];
+        // vert_prop.con = paramJitter;// - minSPVec[j];
 
         r_c_shortest_paths
                 (graphDelay,
@@ -279,15 +272,20 @@ void Graph::graphReduction() {
 
         delayFromCShp[j] = pareto_opt[0].cost;
 
-        if (pareto_opt.empty() || delayFromCShp[j] > paramDelay) notAttend[j] = true;
+//        cout << j + 1 << " - " << delayFromCShp[j] << " : " << pareto_opt[0].res << endl;
 
-        vert_prop.con = paramJitter;
+        if (pareto_opt.empty() || delayFromCShp[j] > paramDelay) {
+//            for (int j = static_cast<int>( opt_solutions[0].size()) - 1; j >= 0; --j)
+//                cout << opt_solutions[0][j].m_source + 1 << " - " << opt_solutions[0][j].m_target + 1 << endl;
+            notAttend[j] = true;
+        }
+        // vert_prop.con = paramJitter;
     }
 
     // Moterated Vertex Elimination
     bool rem;
+    cout << "Vertex elimination" << endl;
     for (auto i : nonTerminals) {
-        if (i == 0) continue;
         if (!removed[i]) {
             rem = true;
             dijkstra_shortest_paths(graphJitterSP, i, predecessor_map(
@@ -300,33 +298,32 @@ void Graph::graphReduction() {
                     break;
                 }
             }
-            if (rem) {
-                cout << i << endl;
-                notAttend[i] = true;
-            }
+            if (rem) notAttend[i] = true;
+
         }
     }
 
-    for (j = 1; j < n; ++j)
+    for (j = 0; j < n; ++j)
         if (notAttend[j]) removed[j] = true;
 
-    for (j = 1; j < n; j++) {
+    for (j = 0; j < n; j++) {
         if (removed[j]) arcs[j].erase(arcs[j].begin(), arcs[j].end());
         for (int i = 0; i < int(arcs[j].size()); i++) {
-            if (arcs[j][i]->getD() == 0) continue;
             if (removed[arcs[j][i]->getD()]) {
                 arcs[j].erase(arcs[j].begin() + i);
                 i--;
             }
         }
     }
+
+//    for (j = 0; j < n; j++)
+//        if (notAttend[j]) cout << j + 1 << ", ";
+//    cout << endl;
     // =========== end ==============
 
-    // Strong Arc Elimination
-
-    // Terminals
+    // Moderated Arc Elimination
     for (auto i : DuS) {
-        if (removed[i] || i == 0) continue;
+        if (removed[i]) continue;
         lbsi = delayFromCShp[i];
 
         for (auto arc : arcs[i]) {
@@ -334,6 +331,7 @@ void Graph::graphReduction() {
 
             SPPRC_Graph_Vert &vert_prop = get(vertex_bundle, graphDelay)[j];
             vert_prop.con = paramJitter - jitterFromCShp[j];
+            rem = true;
 
             for (auto k : terminals) {
                 if (k == i || k == j) continue;
@@ -351,16 +349,66 @@ void Graph::graphReduction() {
                          allocator<r_c_shortest_paths_label<SPPRCGraph, spp_spp_res_cont >>(),
                          default_r_c_shortest_paths_visitor());
 
-                if (pareto_opt.empty() || lbsi + arc->getDelay() + pareto_opt[0].cost > paramDelay) {
-//                    cout << "[" << i << ", " << j  << ", " << k << "]" << endl;
-                    removedF[i][j][k] = true;
+
+                if (!pareto_opt.empty() || lbsi + arc->getDelay() + pareto_opt[0].cost <= paramDelay) {
+                    rem = false;
+                    break;
                 }
             }
             vert_prop.con = paramJitter;
+            if (rem) removedF[i][j][0] = true;
         }
     }
 
-    getchar();
+    // ---------------------- End ------------------------
+    BoostGraph graphAux = BoostGraph(n);
+
+    cout << "Edges to remove" << endl;
+    for (j = 0; j < n; j++) {
+        if (removed[j]) continue;
+        for (auto arc : arcs[j]) {
+            if (removedF[j][arc->getD()][0]) cout << j << " - " << arc->getD() << endl;
+            else add_edge(j, arc->getD(), arc->getDelay(), graphAux);
+        }
+    }
+
+    dijkstra_shortest_paths(graphAux, root, predecessor_map(
+            make_iterator_property_map(predecessors.begin(), get(vertex_index, graphAux))).distance_map(
+            make_iterator_property_map(distanceJitter.begin(), get(vertex_index, graphAux))));
+
+    for (j = 0; j < n; j++) {
+        if (distanceJitter[j] > paramDelay) {
+//            cout << j + 1 << " = " << distanceDelay[j] << endl;
+            removed[j] = true;
+        }
+    }
+
+    for (j = 0; j < n; j++) {
+        if (removed[j]) arcs[j].erase(arcs[j].begin(), arcs[j].end());
+        for (int i = 0; i < int(arcs[j].size()); i++) {
+            if (arcs[j][i]->getD() == 0) continue;
+            if (removed[arcs[j][i]->getD()]) {
+                arcs[j].erase(arcs[j].begin() + i);
+                i--;
+            }
+        }
+    }
+
+    nRemoved = n;
+    for (j = 0; j < n; j++)
+        if (removed[j]) {
+            nRemoved--;
+//            cout << j + 1 << ", ";
+        }
+
+
+//    for (j = 0; j < n; j++) {
+//        for (auto arc : arcs[j]) {
+//            cout << j << " - " << arc->getD() << endl;
+//        }
+//    }
+
+//    getchar();
 
     /*
     for (int i = 0; i < n; ++i) {
@@ -583,7 +631,7 @@ void Graph::showGraph() {
     cout << "Arcs" << endl;
     for (int o = 0; o < n; o++) {
         for (auto *arc : arcs[o])
-            cout << o << " " << arc->getD() << ": " << arc->getDelay()
+            cout << o + 1 << " " << arc->getD() + 1 << ": " << arc->getDelay()
                  << " " << arc->getJitter() << " " << arc->getBandwidth() << " " <<
                  arc->getEstimateLinkDuration() << endl;
 
@@ -591,18 +639,18 @@ void Graph::showGraph() {
 
     cout << "\n Param" << endl;
     cout << "Nodes: " << n << " Edges: " << m <<
-         " CntTerminals: " << int(terminals.size()) << " Root: " << root << endl;
+         " CntTerminals: " << int(terminals.size()) << " Root: " << root + 1 << endl;
 
     cout << "Delay: " << paramDelay << " Jitter: " << paramJitter <<
          " DelayVari.: " << paramVariation << " Bandwidth: " << paramBandwidth << endl;
 
     cout << "Terminals" << endl;
     for (int i : terminals) {
-        cout << "T: " << i << " ";
+        cout << "T: " << i + 1 << " ";
     }
     cout << "\nNonTerminals" << endl;
     for (int i : nonTerminals) {
-        cout << "NT: " << i << " ";
+        cout << "NT: " << i + 1 << " ";
     }
 }
 
@@ -624,6 +672,10 @@ int Graph::getN() const {
 
 void Graph::setN(int n) {
     Graph::n = n;
+}
+
+int Graph::getNAfterRemove() const {
+    return nRemoved;
 }
 
 int Graph::getM() const {

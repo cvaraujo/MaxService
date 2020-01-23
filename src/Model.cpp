@@ -11,8 +11,8 @@ Model::Model(Graph *graph) {
         graph->graphReduction();
         initialize();
     } else exit(EXIT_FAILURE);
-
 }
+//3222  1425    2.00000   12  401    4.00000    1.37717  65.6%   416  405s
 
 void Model::initialize() {
     int o, d, n = graph->getN(), m = graph->getM();
@@ -40,9 +40,10 @@ void Model::initialize() {
             }
         }
 
-        for (int i = 0; i < n; i++) {
+        for (auto i : graph->terminals) {
             sprintf(name, "z_%d", i);
             z[i] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
+            if (graph->removed[i]) model.addConstr(z[i] == 1);
         }
         model.update();
     } catch (GRBException &ex) {
@@ -65,7 +66,7 @@ void Model::initModel() {
     relXandY(), maxArcs();
     limDelayAndJitter();
     limVariation();
-    primeToTerminals(), nonTerminalsLeafs();
+//    primeToTerminals(), nonTerminalsLeafs();
     cout << "All done!" << endl;
 }
 
@@ -75,18 +76,18 @@ void Model::preprocessing() {
 //        if (graph->notAttend[j]) model.addConstr(z[j] == 1);
 //    }
 
-    cout << "Edges to remove" << endl;
-    for (int j = 1; j < graph->getN(); j++) {
-        if (graph->removed[j]) continue;
-        for (auto arc : graph->arcs[j]) {
-            for (auto t : graph->terminals) {
-                if (graph->removedF[j][arc->getD()][t]) {
-                    model.addConstr(f[j][arc->getD()][t] == 0);
-                }
-            }
-        }
-    }
-    model.update();
+//    cout << "Edges to remove" << endl;
+//    for (int j = 1; j < graph->getN(); j++) {
+//        if (graph->removed[j]) continue;
+//        for (auto arc : graph->arcs[j]) {
+//            for (auto t : graph->terminals) {
+//                if (graph->removedF[j][arc->getD()][t]) {
+//                    model.addConstr(f[j][arc->getD()][t] == 0);
+//                }
+//            }
+//        }
+//    }
+//    model.update();
 //
 //    for (auto t : graph->terminals) {
 //        for (int j = 0; j < graph->getN(); ++j) {
@@ -110,6 +111,7 @@ void Model::objectiveFunction() {
 void Model::rootFlow() {
     int o, d, root = graph->getRoot();
     for (auto k : graph->terminals) {
+        if (graph->removed[k]) continue;
         GRBLinExpr flowExpr, rootExpr;
         for (o = 0; o < graph->getN(); o++) {
             if (graph->removed[o]) continue;
@@ -128,6 +130,7 @@ void Model::rootFlow() {
 void Model::flowConservation() {
     int o, d, root = graph->getRoot();
     for (auto k : graph->DuS) {
+        if (graph->removed[k]) continue;
         for (int j = 0; j < graph->getN(); j++) {
             if (j != root && j != k) {
                 GRBLinExpr flowIn, flowOut;
@@ -150,6 +153,7 @@ void Model::flowConservation() {
 void Model::terminalsFlow() {
     int o, d;
     for (auto k : graph->DuS) {
+        if (graph->removed[k]) continue;
         GRBLinExpr flowIn, flowOut;
         for (o = 0; o < graph->getN(); o++) {
             if (graph->removed[o]) continue;
@@ -171,10 +175,12 @@ void Model::relXandY() {
         if (graph->removed[o]) continue;
         for (auto *arc : graph->arcs[o]) {
             o = arc->getO(), d = arc->getD();
-            for (auto k : graph->DuS)
+            for (auto k : graph->DuS) {
+                if (graph->removed[k]) continue;
                 model.addConstr(f[o][d][k] <= y[o][d],
                                 "f_and_y_relation_" + to_string(o) + "_" + to_string(d) +
                                 "_" + to_string(k));
+            }
 
         }
     }
@@ -190,7 +196,7 @@ void Model::maxArcs() {
             totalArcs += y[arc->getO()][arc->getD()];
         }
     }
-    model.addConstr(totalArcs == (graph->getN() - 1), "maximum_of_arcs");
+    model.addConstr(totalArcs == (graph->getNAfterRemove() - 1), "maximum_of_arcs");
 
     model.update();
     cout << "maximum of arcs in the tree" << endl;
@@ -199,6 +205,7 @@ void Model::maxArcs() {
 void Model::limDelayAndJitter() {
     int o, d, paramDelay, paramJitter;
     for (auto k : graph->terminals) {
+        if (graph->removed[k]) continue;
         GRBLinExpr limDelay, limJitter;
         for (o = 0; o < graph->getN(); o++) {
             if (graph->removed[o]) continue;
@@ -221,7 +228,9 @@ void Model::limDelayAndJitter() {
 void Model::limVariation() {
     int o, d, bigMK, bigML;
     for (auto k : graph->terminals) {
+        if (graph->removed[k]) continue;
         for (auto l : graph->terminals) {
+            if (graph->removed[l]) continue;
             if (k != l) {
                 GRBLinExpr delayVariation;
                 for (o = 0; o < graph->getN(); o++) {
@@ -290,13 +299,13 @@ void Model::showSolution(string instance) {
         output << "---------\n";
         for (auto i : graph->terminals)
             if (z[i].get(GRB_DoubleAttr_X) > 0.9)
-                output << i << "\n";
+                output << i + 1 << "\n";
         output << "---------\n";
         for (int o = 0; o < graph->getN(); o++) {
             for (auto *arc : graph->arcs[o]) {
-                if (y[o][arc->getD()].get(GRB_DoubleAttr_X) > 0.9)
-                    output << arc->getO() << ", " << arc->getD() << endl;
-
+                if (y[o][arc->getD()].get(GRB_DoubleAttr_X) > 0.9) {
+                    output << arc->getO() + 1 << ", " << arc->getD() + 1 << " = " << arc->getDelay() << endl;
+                }
             }
         }
         output.close();
