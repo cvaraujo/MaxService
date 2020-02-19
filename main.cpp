@@ -4,24 +4,17 @@
 
 int main(int argc, const char *argv[]) {
     if (argc < 4) {
-        mkdir("results", 0777);
-        auto *graph = new Graph("Washington-50/10/washington-50-10-4.txt",
-                                "Washington-0/10/param-washington-50-10-10.txt", "results/result_teste.txt");
-        graph->showGraph();
-        getchar();
-        auto *model = new Model(graph);
-        model->initModel();
-        model->solve();
-        model->showSolution("results/result_teste.txt");
         return 0;
     } else {
         mkdir("results", 0777);
-        auto *graph = new Graph(argv[1], argv[2], argv[3]);
+        auto *graph = new Graph(argv[2], argv[3], argv[4]);
+        string usePrep = "1";
+        bool use = usePrep.compare(argv[1]);
+        auto *model = new Model(graph, use);
         graph->showGraph();
-        auto *model = new Model(graph);
         model->initModel();
         model->solve();
-        model->showSolution(argv[3]);
+        model->showSolution(argv[4]);
     }
 
     return 0;

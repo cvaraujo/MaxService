@@ -5,14 +5,13 @@
 #include <chrono>
 #include "../headers/Model.h"
 
-Model::Model(Graph *graph) {
+Model::Model(Graph *graph, bool usePrep) {
     if (graph != nullptr) {
         this->graph = graph;
-        graph->graphReduction();
         initialize();
     } else exit(EXIT_FAILURE);
 }
-//3222  1425    2.00000   12  401    4.00000    1.37717  65.6%   416  405s
+
 
 void Model::initialize() {
     int o, d, n = graph->getN(), m = graph->getM();
@@ -43,7 +42,6 @@ void Model::initialize() {
         for (auto i : graph->terminals) {
             sprintf(name, "z_%d", i);
             z[i] = model.addVar(0.0, 1.0, 0, GRB_BINARY, name);
-            if (graph->removed[i]) model.addConstr(z[i] == 1);
         }
         model.update();
     } catch (GRBException &ex) {
@@ -55,50 +53,12 @@ void Model::initialize() {
 
 void Model::initModel() {
     cout << "Begin the model creation" << endl;
-
-    auto start = chrono::steady_clock::now();
-    preprocessing();
-    auto end = chrono::steady_clock::now();
-    this->preprocessingTime = chrono::duration_cast<chrono::seconds>(end - start).count();
-
     objectiveFunction();
     rootFlow(), flowConservation(), terminalsFlow();
     relXandY(), maxArcs();
     limDelayAndJitter();
     limVariation();
-//    primeToTerminals(), nonTerminalsLeafs();
     cout << "All done!" << endl;
-}
-
-void Model::preprocessing() {
-
-//    for (int j = 0; j < graph->getN(); ++j) {
-//        if (graph->notAttend[j]) model.addConstr(z[j] == 1);
-//    }
-
-//    cout << "Edges to remove" << endl;
-//    for (int j = 1; j < graph->getN(); j++) {
-//        if (graph->removed[j]) continue;
-//        for (auto arc : graph->arcs[j]) {
-//            for (auto t : graph->terminals) {
-//                if (graph->removedF[j][arc->getD()][t]) {
-//                    model.addConstr(f[j][arc->getD()][t] == 0);
-//                }
-//            }
-//        }
-//    }
-//    model.update();
-//
-//    for (auto t : graph->terminals) {
-//        for (int j = 0; j < graph->getN(); ++j) {
-//            for (auto arc : graph->arcs[j]) {
-//                if (!graph->removedF[j][arc->getD()][t]) {
-//                    cout << t << " : " << j << " - " << arc->getD() << endl;
-//                }
-//            }
-//        }
-//    }
-//    getchar();
 }
 
 void Model::objectiveFunction() {
@@ -110,7 +70,7 @@ void Model::objectiveFunction() {
 
 void Model::rootFlow() {
     int o, d, root = graph->getRoot();
-    for (auto k : graph->terminals) {
+    for (auto k : graph->DuS) {
         if (graph->removed[k]) continue;
         GRBLinExpr flowExpr, rootExpr;
         for (o = 0; o < graph->getN(); o++) {
@@ -252,29 +212,9 @@ void Model::limVariation() {
     cout << "Delay variation limits" << endl;
 }
 
-void Model::primeToTerminals() {
-    for (auto k : graph->terminals)
-        model.addConstr(f[graph->getRoot()][0][k] == 0, "prime_to_terminals_" + to_string(k));
-    model.update();
-    cout << "S' to terminals" << endl;
-}
-
-void Model::nonTerminalsLeafs() {
-    for (auto q : graph->nonTerminals) {
-        for (auto e : graph->DuS) {
-            if (e != q) {
-                if (q == 0 || e == 0) continue;
-                model.addConstr(f[0][q][e] == 0, "non_terminals_leafs_" + to_string(q) + "_" + to_string(e));
-            }
-        }
-    }
-    model.update();
-    cout << "Non terminals are leafs" << endl;
-}
-
 void Model::solve() {
     try {
-        model.set("TimeLimit", "1200.0");
+        model.set("TimeLimit", "3600.0");
         model.update();
         model.write("model.lp");
         model.optimize();
@@ -288,23 +228,24 @@ void Model::showSolution(string instance) {
     try {
         ofstream output;
         output.open(instance, ofstream::app);
-        output << preprocessingTime << endl;
+        output << "Prep. Time: 0" << endl;
         double ub = model.get(GRB_DoubleAttr_ObjVal), lb = model.get(GRB_DoubleAttr_ObjBound);
-        output << ub << endl;
-        output << lb << endl;
-        output << model.get(GRB_DoubleAttr_Runtime) << "\n";
+        output << "UB: " << ub << endl;
+        output << "LB: " << lb << endl;
+        if (ub != 0) output << "gap: " << (ub - lb) / ub << endl;
+        
+        output << "N. Nodes: " << model.get(GRB_DoubleAttr_NodeCount) << endl;
+        output << "Runtime: " << model.get(GRB_DoubleAttr_Runtime) << endl;
 
-        if (ub != 0) output << (ub - lb) / ub << "\n";
-
-        output << "---------\n";
+        output << "----- Solution -----" << endl;
         for (auto i : graph->terminals)
-            if (z[i].get(GRB_DoubleAttr_X) > 0.9)
-                output << i + 1 << "\n";
-        output << "---------\n";
+            if (z[i].get(GRB_DoubleAttr_X) > 0.5)
+                output << i+1 << endl;
+        output << "----- Tree -----" << endl;
         for (int o = 0; o < graph->getN(); o++) {
             for (auto *arc : graph->arcs[o]) {
-                if (y[o][arc->getD()].get(GRB_DoubleAttr_X) > 0.9) {
-                    output << arc->getO() + 1 << ", " << arc->getD() + 1 << " = " << arc->getDelay() << endl;
+                if (y[o][arc->getD()].get(GRB_DoubleAttr_X) > 0.5) {
+                    output << arc->getO()+1 << ", " << arc->getD()+1 << " = " << arc->getDelay() << " / " << arc->getJitter() << endl;
                 }
             }
         }
@@ -312,5 +253,4 @@ void Model::showSolution(string instance) {
     } catch (GRBException &ex) {
         cout << ex.getMessage() << endl;
     }
-
 }
