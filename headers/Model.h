@@ -41,7 +41,7 @@ class Model {
     void nonTerminalsLeafs();
 
 public:
-    Model(Graph *graph, bool usePrep);
+    Model(Graph *graph);
 
     void initialize();
 
