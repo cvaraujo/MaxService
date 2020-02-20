@@ -216,19 +216,20 @@ void Model::showSolution(string instance) {
     try {
         ofstream output;
         output.open(instance, ofstream::app);
-
+        output << "Prep. Time: 0" << endl;
         double ub = model.get(GRB_DoubleAttr_ObjVal), lb = model.get(GRB_DoubleAttr_ObjBound);
-        output << ub << "\n";
-        output << lb << "\n";
-        output << model.get(GRB_DoubleAttr_Runtime) << "\n";
+        output << "UB: " << ub << endl;
+        output << "LB: " << lb << endl;
+        if (ub != 0) output << "gap: " << (ub - lb) / ub << endl;
+        
+        output << "N. Nodes: " << model.get(GRB_DoubleAttr_NodeCount) << endl;
+        output << "Runtime: " << model.get(GRB_DoubleAttr_Runtime) << endl;
 
-        if (ub != 0) output << (ub - lb) / ub << "\n";
-
-        output << "---------\n";
+        output << "----- Solution -----" << endl;
         for (auto i : graph->terminals)
-            if (z[i].get(GRB_DoubleAttr_X) > 0.9)
-                output << i+1 << "\n";
-        output << "---------\n";
+            if (z[i].get(GRB_DoubleAttr_X) > 0.5)
+                output << i+1 << endl;
+        output << "----- Tree -----" << endl;
             for (int o = 0; o < graph->getN(); o++) {
                 if (!graph->removed[o]) {
                     for (auto *arc : graph->arcs[o]) {
