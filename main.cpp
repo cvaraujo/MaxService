@@ -7,14 +7,12 @@ int main(int argc, const char *argv[]) {
         return 0;
     } else {
         mkdir("results", 0777);
-        auto *graph = new Graph(argv[2], argv[3], argv[4]);
-        string usePrep = "1";
-        bool use = usePrep.compare(argv[1]);
-        auto *model = new Model(graph, use);
+        auto *graph = new Graph(argv[1], argv[2], argv[3]);
+        auto *model = new Model(graph);
         graph->showGraph();
         model->initModel();
         model->solve();
-        model->showSolution(argv[4]);
+        model->showSolution(argv[3]);
     }
 
     return 0;
